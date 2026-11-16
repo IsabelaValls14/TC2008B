@@ -1,7 +1,9 @@
 /*
  * Student: Isabela V
  *
- * Draws a 2D face made of triangles, and a diamond that acts as the pivot.
+ * Draws a 2D "hard-hat smiley" made of triangles, and a diamond that acts as the pivot.
+ * The face wears an orange construction helmet, winks, has rosy cheeks, freckles
+ * and a tongue sticking out.
  * The face is transformed with 2D matrices (scale, rotation and translation).
  * The rotation is done around the pivot. The order in which the three
  * transformations are applied can be changed from a dropdown in the lil-gui panel.
@@ -39,10 +41,20 @@ const FACE_RADIUS = 150;
 const PIVOT_SIZE = 30;
 const HEAD_SEGMENTS = 64;
 const MOUTH_SEGMENTS = 12;
+const CHEEK_SEGMENTS = 24;
+const HELMET_SEGMENTS = 32;
+const FRECKLE_SEGMENTS = 6;
+const TONGUE_SEGMENTS = 10;
 
 // Colors used for the parts of the face
 const SKIN_COLOR: Color = [1.0, 0.9, 0.2, 1];
 const FEATURE_COLOR: Color = [0, 0, 0, 1];
+const CHEEK_COLOR: Color = [1.0, 0.45, 0.55, 1];
+const FRECKLE_COLOR: Color = [0.6, 0.3, 0.1, 1];
+const TONGUE_COLOR: Color = [1.0, 0.25, 0.35, 1];
+const HELMET_COLOR: Color = [1.0, 0.45, 0.05, 1];
+const BRIM_COLOR: Color = [0.8, 0.3, 0.0, 1];
+const STRIPE_COLOR: Color = [1, 1, 1, 1];
 const PIVOT_COLOR: Color = [0.6, 0.6, 0.6, 1];
 
 type Point = [number, number];
@@ -64,31 +76,65 @@ function addTriangle(mesh: MeshData, a: Point, b: Point, c: Point, color: Color)
     mesh.indices.push(first, first + 1, first + 2);
 }
 
+// Add a four-corner quad (corners given in order around it) as two triangles
+function addQuad(mesh: MeshData, a: Point, b: Point, c: Point, d: Point, color: Color): void {
+    addTriangle(mesh, a, b, c, color);
+    addTriangle(mesh, a, c, d, color);
+}
+
 // Point on a circle, given its center, radius and angle in radians
 function polar(center: Point, radius: number, angle: number): Point {
     return [center[0] + radius * Math.cos(angle), center[1] + radius * Math.sin(angle)];
 }
 
-// Head: a fan of triangles around the center of the face
-function addHead(mesh: MeshData, radius: number): void {
-    const center: Point = [0, 0];
-    for (let i = 0; i < HEAD_SEGMENTS; i++) {
-        const angleA = (i / HEAD_SEGMENTS) * Math.PI * 2;
-        const angleB = ((i + 1) / HEAD_SEGMENTS) * Math.PI * 2;
+// Fan of triangles from the center to an arc, from startAngle to endAngle
+function addFan(mesh: MeshData, center: Point, radius: number,
+    startAngle: number, endAngle: number, segments: number, color: Color): void {
+    for (let i = 0; i < segments; i++) {
+        const angleA = startAngle + (i / segments) * (endAngle - startAngle);
+        const angleB = startAngle + ((i + 1) / segments) * (endAngle - startAngle);
         addTriangle(mesh, center, polar(center, radius, angleA),
-            polar(center, radius, angleB), SKIN_COLOR);
+            polar(center, radius, angleB), color);
     }
 }
 
-// Eyes: two triangles pointing down
+// Head: a full circle of triangles around the center of the face
+function addHead(mesh: MeshData, radius: number): void {
+    addFan(mesh, [0, 0], radius, 0, Math.PI * 2, HEAD_SEGMENTS, SKIN_COLOR);
+}
+
+// Cheeks: pink circles on each side of the face
+function addCheeks(mesh: MeshData, radius: number): void {
+    for (const side of [-1, 1]) {
+        const center: Point = [side * radius * 0.55, -radius * 0.02];
+        addFan(mesh, center, radius * 0.16, 0, Math.PI * 2, CHEEK_SEGMENTS, CHEEK_COLOR);
+    }
+}
+
+// Freckles: small dots on each cheek
+function addFreckles(mesh: MeshData, radius: number): void {
+    const offsets: Point[] = [[-0.1, 0.08], [0.05, 0.12], [0, -0.06]];
+    for (const side of [-1, 1]) {
+        for (const [dx, dy] of offsets) {
+            const center: Point = [side * radius * (0.55 + dx), radius * dy];
+            addFan(mesh, center, radius * 0.035, 0, Math.PI * 2, FRECKLE_SEGMENTS,
+                FRECKLE_COLOR);
+        }
+    }
+}
+
+// Eyes: a triangle for the left eye, and a flat line for the winking right eye
 function addEyes(mesh: MeshData, radius: number): void {
     const size = radius * 0.12;
-    for (const side of [-1, 1]) {
-        const x = side * radius * 0.35;
-        const y = radius * 0.3;
-        addTriangle(mesh, [x - size, y + size], [x + size, y + size], [x, y - size],
-            FEATURE_COLOR);
-    }
+    const eyeY = radius * 0.3;
+    const leftX = -radius * 0.35;
+    const rightX = radius * 0.35;
+    addTriangle(mesh, [leftX - size, eyeY + size], [leftX + size, eyeY + size],
+        [leftX, eyeY - size], FEATURE_COLOR);
+
+    const lid = radius * 0.025;
+    addQuad(mesh, [rightX - size, eyeY + lid], [rightX + size, eyeY + lid],
+        [rightX + size, eyeY - lid], [rightX - size, eyeY - lid], FEATURE_COLOR);
 }
 
 // Mouth: a curved band made of quads, each split into two triangles
@@ -101,21 +147,44 @@ function addMouth(mesh: MeshData, radius: number): void {
     for (let i = 0; i < MOUTH_SEGMENTS; i++) {
         const t0 = startAngle + (i / MOUTH_SEGMENTS) * (endAngle - startAngle);
         const t1 = startAngle + ((i + 1) / MOUTH_SEGMENTS) * (endAngle - startAngle);
-        const outer0 = polar(center, outerRadius, t0);
-        const outer1 = polar(center, outerRadius, t1);
-        const inner0 = polar(center, innerRadius, t0);
-        const inner1 = polar(center, innerRadius, t1);
-        addTriangle(mesh, outer0, outer1, inner1, FEATURE_COLOR);
-        addTriangle(mesh, outer0, inner1, inner0, FEATURE_COLOR);
+        addQuad(mesh, polar(center, outerRadius, t0), polar(center, outerRadius, t1),
+            polar(center, innerRadius, t1), polar(center, innerRadius, t0), FEATURE_COLOR);
     }
 }
 
-// Create the face centered at the origin, so its scale and rotation start there
+// Tongue: a half disk hanging from the bottom of the mouth
+function addTongue(mesh: MeshData, radius: number): void {
+    const bottomOfMouth: Point = [0, radius * 0.05 - radius * 0.5];
+    addFan(mesh, bottomOfMouth, radius * 0.16, Math.PI, Math.PI * 2, TONGUE_SEGMENTS,
+        TONGUE_COLOR);
+}
+
+// Helmet: a dome, a darker brim below it, and a white stripe down the middle
+function addHelmet(mesh: MeshData, radius: number): void {
+    const domeCenter: Point = [0, radius * 0.55];
+    const domeRadius = radius * 0.92;
+    addFan(mesh, domeCenter, domeRadius, 0, Math.PI, HELMET_SEGMENTS, HELMET_COLOR);
+
+    const brimHalfWidth = radius * 1.05;
+    addQuad(mesh, [-brimHalfWidth, radius * 0.47], [brimHalfWidth, radius * 0.47],
+        [brimHalfWidth, radius * 0.55], [-brimHalfWidth, radius * 0.55], BRIM_COLOR);
+
+    const stripeHalfWidth = radius * 0.08;
+    addQuad(mesh, [-stripeHalfWidth, radius * 0.55], [stripeHalfWidth, radius * 0.55],
+        [stripeHalfWidth, radius * 1.3], [-stripeHalfWidth, radius * 1.3], STRIPE_COLOR);
+}
+
+// Create the face centered at the origin, so its scale and rotation start there.
+// The later parts are drawn over the earlier ones, so the helmet goes last.
 function createFace(radius: number): twgl.Arrays {
     const mesh: MeshData = { positions: [], colors: [], indices: [] };
     addHead(mesh, radius);
-    addEyes(mesh, radius);
+    addCheeks(mesh, radius);
+    addFreckles(mesh, radius);
     addMouth(mesh, radius);
+    addTongue(mesh, radius);
+    addEyes(mesh, radius);
+    addHelmet(mesh, radius);
 
     return {
         a_position: { numComponents: 2, data: mesh.positions },

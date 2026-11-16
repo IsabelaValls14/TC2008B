@@ -34,13 +34,19 @@ export class V2 {
         return dest;
     }
 
-    // TODO: Add the methods: subtract and scale
-    // - subtract: receives two Vec2, and an optional 3rd Vec2.
-    //      returns the result of the subtraction inside of the 3rd Vec2
-    // - scale: receives a Vec2, a number and an optional 3rd Vec2.
-    //      returns the multiplication of each element of the vector by the scalar
-    //      inside the 3rd Vec2
+    static subtract(u: Vec2, v: Vec2, dest?: Vec2): Vec2 {
+        dest = dest || new Float32Array(2);
+        dest[X] = u[X] - v[X];
+        dest[Y] = u[Y] - v[Y];
+        return dest;
+    }
 
+    static scale(v: Vec2, k: number, dest?: Vec2): Vec2 {
+        dest = dest || new Float32Array(2);
+        dest[X] = v[X] * k;
+        dest[Y] = v[Y] * k;
+        return dest;
+    }
 }
 
 // 3x3 matrices used for 2D transformations
@@ -53,70 +59,49 @@ export class M3 {
         ];
     }
 
-    // TODO: Modify the following methods so they return the correct
-    // transformation matrix
-
+    // Translation by the vector v. The translation lives in the last column,
+    // which is elements 6 and 7 of the column-major array.
     static translation(v: Vec2): Mat3 {
         return [
-            1,  0,  0,
-            0,  1,  0,
-            0,  0,  1,
+            1,       0,       0,
+            0,       1,       0,
+            v[X],    v[Y],    1,
         ];
     }
 
+    // Counter-clockwise rotation around the origin, in radians.
     static rotation(angleRadians: number): Mat3 {
+        const c = Math.cos(angleRadians);
+        const s = Math.sin(angleRadians);
         return [
-            1,  0,  0,
-            0,  1,  0,
-            0,  0,  1,
+             c,  s,  0,
+            -s,  c,  0,
+             0,  0,  1,
         ];
     }
 
+    // Scale along the X and Y axes, relative to the origin.
     static scale(v: Vec2): Mat3 {
         return [
-            1,  0,  0,
-            0,  1,  0,
-            0,  0,  1,
+            v[X],  0,     0,
+            0,     v[Y],  0,
+            0,     0,     1,
         ];
     }
 
+    // Matrix product a * b. Both matrices are column-major, so element
+    // (row, col) is stored at index col * 3 + row. Applying the result to a
+    // point is the same as applying b first and then a.
     static multiply(a: Mat3, b: Mat3): Mat3 {
-        // Get the elements in the matrix
-        const a00 = a[0 * 3 + 0];
-        const a01 = a[0 * 3 + 1];
-        const a02 = a[0 * 3 + 2];
-        const a10 = a[1 * 3 + 0];
-        const a11 = a[1 * 3 + 1];
-        const a12 = a[1 * 3 + 2];
-        const a20 = a[2 * 3 + 0];
-        const a21 = a[2 * 3 + 1];
-        const a22 = a[2 * 3 + 2];
-        const b00 = b[0 * 3 + 0];
-        const b01 = b[0 * 3 + 1];
-        const b02 = b[0 * 3 + 2];
-        const b10 = b[1 * 3 + 0];
-        const b11 = b[1 * 3 + 1];
-        const b12 = b[1 * 3 + 2];
-        const b20 = b[2 * 3 + 0];
-        const b21 = b[2 * 3 + 1];
-        const b22 = b[2 * 3 + 2];
-
-        /*
-        // Matrix guide:
-        // Consider the rows and columns are transposed
-        a00 a01 a02            b00 b01 b02
-        a10 a11 a12            b10 b11 b12
-        a20 a21 a22            b20 b21 b22
-        */
-
-        // The matrices are oriented transposed, so the multiplication
-        // must be adjusted accordingly
-
-        return [
-            1,  0,  0,
-            0,  1,  0,
-            0,  0,  1,
-        ];
+        const result: Mat3 = [0, 0, 0, 0, 0, 0, 0, 0, 0];
+        for (let col = 0; col < 3; col++) {
+            for (let row = 0; row < 3; row++) {
+                for (let k = 0; k < 3; k++) {
+                    result[col * 3 + row] += a[k * 3 + row] * b[col * 3 + k];
+                }
+            }
+        }
+        return result;
     }
 
 }
